@@ -4,8 +4,8 @@
 #include <time.h>
 #include <signal.h>
 
-#define CHARSET "abcdefghijklmnopqrstuvwxyz"
-#define CHARSET_SIZE 26
+#define CHARSET "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_=+[]{};:'\",.<>/?\\|`~"
+#define CHARSET_SIZE (sizeof(CHARSET) - 1)
 #define MAX_LEN 12
 
 typedef unsigned int uint32;
@@ -25,24 +25,16 @@ void md5_transform(uint32 h[4], const uint8 block[64]);
 void md5_update(MD5_CTX *ctx, const uint8 *input, size_t len);
 void md5_init(MD5_CTX *ctx);
 void md5_final(uint8 digest[16], MD5_CTX *ctx);
-void md5_string_len(const char *str, size_t len, char output[33]);
 
-void md5_string_len(const char *str, size_t len, char output[33]) {
+void md5_digest(const char *str, size_t len, uint8 digest[16]) {
     MD5_CTX ctx;
-    uint8 digest[16];
     md5_init(&ctx);
     md5_update(&ctx, (const uint8*)str, len);
     md5_final(digest, &ctx);
-    for (int i = 0; i < 16; ++i) {
-        static const char hex[] = "0123456789abcdef";
-        output[i*2] = hex[digest[i] >> 4];
-        output[i*2+1] = hex[digest[i] & 0x0F];
-    }
-    output[32] = '\0';
 }
 
-int brute_force(char* buffer, int position, int max_len, const char* target_hash, time_t start_time) {
-    static char hash[33];
+int brute_force(char* buffer, int position, int max_len, const uint8* target_digest, time_t start_time) {
+    static uint8 digest[16];
 
     if (!keep_running) return 0;
 
@@ -52,23 +44,23 @@ int brute_force(char* buffer, int position, int max_len, const char* target_hash
         buffer[position] = CHARSET[i];
 
         if (position + 1 < max_len) {
-            brute_force(buffer, position + 1, max_len, target_hash, start_time);
+            brute_force(buffer, position + 1, max_len, target_digest, start_time);
         }
 
         buffer[position + 1] = '\0';
         size_t guess_len = position + 1;
-        md5_string_len(buffer, guess_len, hash);
+        md5_digest(buffer, guess_len, digest);
         attempts++;
 
         if (attempts % 1000000 == 0) {
             printf("Tried %llu passwords (current: %s)\n", attempts, buffer);
         }
 
-        if (strcmp(hash, target_hash) == 0) {
+        if (memcmp(digest, target_digest, 16) == 0) {
             time_t end_time = time(NULL);
-            printf("\nPassword trovata: %s\n", buffer);
-            printf("Tentativi: %llu\n", attempts);
-            printf("Tempo: %ld secondi\n", end_time - start_time);
+            printf("\n[FOUND] Password: %s\n", buffer);
+            printf("[INFO] Attempts: %llu\n", attempts);
+            printf("[INFO] Time: %ld seconds\n", end_time - start_time);
             keep_running = 0;
             return 1;
         }
@@ -78,7 +70,7 @@ int brute_force(char* buffer, int position, int max_len, const char* target_hash
 }
 
 void handle_sigint(int sig) {
-    printf("\n❗ Interruzione manuale. Tentativi: %llu\n", attempts);
+    printf("\n[INTERRUPT] Manual stop detected. Attempts: %llu\n", attempts);
     keep_running = 0;
 }
 
@@ -86,24 +78,23 @@ int main() {
     signal(SIGINT, handle_sigint);
 
     char input[64];
-    printf("Inserisci la tua password da testare (solo lettere a-z): ");
+    printf("Enter the password you want to test (charset includes a-zA-Z0-9 and symbols): ");
     scanf("%63s", input);
 
-    char target_hash[33];
-    md5_string_len(input, strlen(input), target_hash);
+    uint8 target_digest[16];
+    md5_digest(input, strlen(input), target_digest);
 
-    printf("Hash da trovare: %s\n", target_hash);
-    printf("Avvio brute-force...\n");
+    printf("[INFO] Brute-force starting from length: %zu\n", strlen(input));
 
     char buffer[MAX_LEN + 1] = {0};
     time_t start = time(NULL);
 
-    for (int len = 1; len <= MAX_LEN && keep_running; len++) {
-        brute_force(buffer, 0, len, target_hash, start);
+    for (int len = strlen(input); len <= MAX_LEN && keep_running; len++) {
+        brute_force(buffer, 0, len, target_digest, start);
     }
 
     if (keep_running) {
-        printf("Password non trovata entro la lunghezza massima (%d)\n", MAX_LEN);
+        printf("[INFO] Password not found up to length %d\n", MAX_LEN);
     }
 
     return 0;
