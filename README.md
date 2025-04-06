@@ -33,4 +33,4 @@ No external libraries are needed.
 
 ### 🔧 Compile with GCC:
 ```bash
-gcc -O3 brute_cracker.c -o brute_cracker
+gcc -O3 brute_cracker.c md5.c -o brute_cracker
